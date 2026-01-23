@@ -28,13 +28,26 @@ TOKEN_MAP_FF = [
 
 
 def decode_msx_basic(data: bytes) -> str:
+    segments = decode_msx_basic_segments(data)
+    return "".join(text for _kind, text in segments)
+
+
+def decode_msx_basic_segments(data: bytes) -> list[tuple[str, str]]:
     if not data:
         raise ValueError("invalid MSX Basic file: file is empty")
     if data[0] != 0xFF:
         raise ValueError(f"invalid MSX Basic file: expected 0xFF, got 0x{data[0]:02X}")
 
-    result = []
+    result: list[tuple[str, str]] = []
     offset = 1
+
+    def add_segment(kind: str, text: str) -> None:
+        if not text:
+            return
+        if result and result[-1][0] == kind:
+            result[-1] = (kind, result[-1][1] + text)
+        else:
+            result.append((kind, text))
 
     while True:
         if offset + 4 > len(data):
@@ -44,39 +57,49 @@ def decode_msx_basic(data: bytes) -> str:
 
         line_number = data[offset] + data[offset + 1] * 256
         offset += 2
-        result.append(f"{line_number} ")
+        add_segment("line_number", str(line_number))
+        add_segment("plain", " ")
+        comment_mode = False
 
         while offset < len(data) and data[offset] != 0x00:
             token = data[offset]
+
+            if comment_mode:
+                if token >= 32:
+                    add_segment("comment", chr(token))
+                elif 17 <= token <= 26:
+                    add_segment("comment", str(token - 17))
+                offset += 1
+                continue
 
             if token == 0x0B:
                 if offset + 2 >= len(data):
                     break
                 value = data[offset + 1] | (data[offset + 2] << 8)
-                result.append(f"&O{value:o}")
+                add_segment("number", f"&O{value:o}")
                 offset += 2
             elif token == 0x0C:
                 if offset + 2 >= len(data):
                     break
                 value = data[offset + 1] | (data[offset + 2] << 8)
-                result.append(f"&H{value:X}")
+                add_segment("number", f"&H{value:X}")
                 offset += 2
             elif token == 0x0E or token == 0x1C:
                 if offset + 2 >= len(data):
                     break
                 line = data[offset + 1] | (data[offset + 2] << 8)
-                result.append(str(line))
+                add_segment("number", str(line))
                 offset += 2
             elif token == 0x0F:
                 if offset + 1 >= len(data):
                     break
                 value = data[offset + 1]
-                result.append(str(value))
+                add_segment("number", str(value))
                 offset += 1
             elif token == 0x1D:
                 if offset + 4 >= len(data):
                     break
-                result.append(custom_bcd_to_string(data[offset + 1:offset + 5]))
+                add_segment("number", custom_bcd_to_string(data[offset + 1:offset + 5]))
                 offset += 4
             elif token == 0x3A:
                 if offset + 1 < len(data):
@@ -86,50 +109,59 @@ def decode_msx_basic(data: bytes) -> str:
                     elif next_token == 0xA1:
                         pass
                     else:
-                        result.append(chr(token))
+                        add_segment("plain", chr(token))
                 else:
-                    result.append(chr(token))
+                    add_segment("plain", chr(token))
             elif token == 0xFF:
                 offset += 1
                 if offset < len(data):
                     next_token = data[offset]
                     index = next_token - 0x81
                     if 0 <= index < len(TOKEN_MAP_FF):
-                        result.append(TOKEN_MAP_FF[index])
+                        add_segment("function", TOKEN_MAP_FF[index])
                     else:
-                        result.append(f"-{next_token}-")
+                        add_segment("plain", f"-{next_token}-")
             elif token >= 0x80:
                 index = token - 0x81
                 if 0 <= index < len(TOKEN_MAP):
-                    result.append(TOKEN_MAP[index])
+                    keyword = TOKEN_MAP[index]
+                    if keyword == "REM":
+                        add_segment("command", keyword)
+                        comment_mode = True
+                    elif keyword == "'":
+                        add_segment("comment", keyword)
+                        comment_mode = True
+                    else:
+                        add_segment("command", keyword)
                 else:
-                    result.append(f"-{token}-")
+                    add_segment("plain", f"-{token}-")
             elif token == 34:
-                result.append('"')
+                string_value = '"'
                 offset += 1
                 while offset < len(data):
                     token = data[offset]
-                    result.append(chr(token))
+                    string_value += chr(token)
                     if token == 34:
                         break
                     if offset + 1 < len(data) and data[offset + 1] == 0:
                         break
                     offset += 1
+                add_segment("string", string_value)
             elif token >= 32:
-                result.append(chr(token))
+                add_segment("plain", chr(token))
             elif 17 <= token <= 26:
-                result.append(str(token - 17))
+                add_segment("number", str(token - 17))
 
             offset += 1
 
         if offset < len(data) and data[offset] == 0x00:
-            result.append("\n")
+            add_segment("plain", "\n")
             offset += 1
 
         if offset + 1 < len(data) and data[offset] == 0x00 and data[offset + 1] == 0x00:
             break
 
-    return "".join(result)
+    return result
 
 
 def custom_bcd_to_string(b: bytes) -> str:
