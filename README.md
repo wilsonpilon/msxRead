@@ -3,9 +3,9 @@
 Leitor de arquivos MSX BASIC tokenizados (formato binario com 0xFF no inicio)
 para texto ASCII puro, com interface grafica para navegar e visualizar.
 
-Este programa e uma parte de um projeto maior que inclui:
-- `basic-dignified`: suite para editar/gerar BASIC classico a partir de uma sintaxe moderna.
-- `msxconverter`: conversor de formatos MSX (BAS, telas, WB2) para formatos modernos.
+Este programa nao faz parte do Basic Dignified Suite nem do MSX Converter; e um projeto independente apenas inspirado neles.
+
+![Screenshot do msxRead](read-00.png)
 
 ## O que foi usado nesta parte
 - Parser MSX BASIC: decodificacao de tokens 0x80.., 0xFF e numeros (inclui BCD customizado).
