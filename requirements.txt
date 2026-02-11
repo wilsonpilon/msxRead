@@ -1,5 +1,5 @@
 customtkinter
 pillow
-beautifulsoup4
 tkinterweb
+beautifulsoup4
 

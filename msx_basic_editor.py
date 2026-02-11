@@ -9,7 +9,29 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from msx_basic_decoder import decode_msx_basic_segments
-from chm_viewer import CHMViewer
+from help_viewer import HelpViewer
+
+# Paleta de cores do MSX1 (0-15)
+# Fonte: https://paulwratt.github.io/programmers-palettes/HW-MSX/HW-MSX-palettes.html
+# Cada item: (índice, nome, cor_hex)
+MSX1_PALETTE: list[tuple[int, str, str]] = [
+    (0,  "transparent",  "#000000"),
+    (1,  "black",        "#010101"),
+    (2,  "medium green", "#3EB849"),
+    (3,  "light green",  "#74D07D"),
+    (4,  "dark blue",    "#5955E0"),
+    (5,  "light blue",   "#8076F1"),
+    (6,  "dark red",     "#B95E51"),
+    (7,  "cyan",         "#65DBEF"),
+    (8,  "medium red",   "#DB6559"),
+    (9,  "light red",    "#FF897D"),
+    (10, "dark yellow",  "#CCC35E"),
+    (11, "light yellow", "#DED087"),
+    (12, "dark green",   "#3AA241"),
+    (13, "magenta",      "#B766B5"),
+    (14, "gray",         "#CCCCCC"),
+    (15, "white",        "#FFFFFF"),
+]
 
 
 class LineNumbers(tk.Canvas):
@@ -214,15 +236,27 @@ class MSXBasicEditor(ctk.CTk):
         self.tools_menu.add_command(label="Adicionar Números de Linha", command=self._add_line_numbers)
         self.tools_menu.add_command(label="Formatar Código (Beautify)", command=self._on_beautify_all)
         self.tools_menu.add_command(label="Mapa do Programa", command=self._on_program_map)
+        
+        # Submenu: Cores MSX1
+        self.msx_colors_menu = tk.Menu(self.tools_menu)
+        self.tools_menu.add_cascade(label="Cores MSX1", menu=self.msx_colors_menu)
+        for idx, name, hex_color in MSX1_PALETTE:
+            self.msx_colors_menu.add_command(
+                label=f"{idx} - {name} ({hex_color})",
+                command=lambda i=idx: self._show_msx1_palette(i)
+            )
+        self.msx_colors_menu.add_separator()
+        self.msx_colors_menu.add_command(label="Mostrar Paleta...", command=self._show_msx1_palette)
+
         self.tools_menu.add_separator()
         self.tools_menu.add_command(label="Configurações", command=self._on_settings)
 
         # Help Menu
         self.help_menu = tk.Menu(self.menubar)
         self.menubar.add_cascade(label="Ajuda", menu=self.help_menu)
-        self.help_menu.add_command(label="Manuais CHM", command=self._open_chm_viewer)
+        self.help_menu.add_command(label="Manuais MSX", command=self._open_help_viewer)
         self.help_menu.add_separator()
-        self.help_menu.add_command(label="Sobre", command=lambda: messagebox.showinfo("Sobre", "MSX-Write Editor\nLeitor de CHM integrado"))
+        self.help_menu.add_command(label="Sobre", command=lambda: messagebox.showinfo("Sobre", "MSX-Write Editor"))
 
         # Toolbar
         toolbar = ctk.CTkFrame(self)
@@ -243,8 +277,9 @@ class MSXBasicEditor(ctk.CTk):
         btn_viewer = ctk.CTkButton(toolbar, text="msxRead (Viewer)", width=120, command=self._open_viewer)
         btn_viewer.grid(row=0, column=4, padx=2, pady=2)
 
-        btn_chm = ctk.CTkButton(toolbar, text="Manuais CHM", width=120, command=self._open_chm_viewer)
-        btn_chm.grid(row=0, column=5, padx=2, pady=2)
+        btn_help = ctk.CTkButton(toolbar, text="Ajuda", width=80, command=self._open_help_viewer)
+        btn_help.grid(row=0, column=5, padx=2, pady=2)
+
 
         # Editor Area
         editor_frame = ctk.CTkFrame(self)
@@ -278,6 +313,41 @@ class MSXBasicEditor(ctk.CTk):
         # Cursor position update
         self.textbox.bind("<KeyRelease>", self._update_status_bar)
         self.textbox.bind("<ButtonRelease-1>", self._update_status_bar)
+
+        # Keybinding: SHIFT+HOME -> ir para início absoluto e listar do topo
+        self.textbox.bind("<Shift-Home>", self._on_shift_home)
+        
+        # Keybindings: CONTROL+B e CONTROL+F -> navegação por palavras
+        self.textbox.bind("<Control-b>", self._on_ctrl_b)
+        self.textbox.bind("<Control-f>", self._on_ctrl_f)
+
+        # Keybinding: CONTROL+E -> apagar até o fim da linha
+        self.textbox.bind("<Control-e>", self._on_ctrl_e)
+        
+        # Keybinding: CONTROL+H -> backspace
+        self.textbox.bind("<Control-h>", self._on_ctrl_h)
+
+        # Keybinding: CONTROL+I -> ir para próxima tabulação (8 colunas)
+        self.textbox.bind("<Control-i>", self._on_ctrl_i)
+        
+        # Keybinding: CONTROL+J -> ir para próxima linha
+        self.textbox.bind("<Control-j>", self._on_ctrl_j)
+
+        # Keybinding: CONTROL+K -> mover cursor para o topo da tela visível
+        self.textbox.bind("<Control-k>", self._on_ctrl_k)
+        self.textbox._textbox.bind("<Control-k>", self._on_ctrl_k)
+
+        # Keybinding: CONTROL+L -> idêntico a SHIFT+HOME (início absoluto)
+        self.textbox.bind("<Control-l>", self._on_shift_home)
+        self.textbox._textbox.bind("<Control-l>", self._on_shift_home)
+
+        # Keybinding: CONTROL+M -> Enter
+        self.textbox.bind("<Control-m>", self._on_ctrl_m)
+        self.textbox._textbox.bind("<Control-m>", self._on_ctrl_m)
+        
+        # Keybinding: CONTROL+N -> ir para o final da linha
+        self.textbox.bind("<Control-n>", self._on_ctrl_n)
+        self.textbox._textbox.bind("<Control-n>", self._on_ctrl_n)
         
         # Sync scrolling for line numbers and ruler
         self.textbox._textbox.configure(yscrollcommand=self._on_textbox_scroll_y, xscrollcommand=self._on_textbox_scroll_x)
@@ -290,6 +360,174 @@ class MSXBasicEditor(ctk.CTk):
     def _on_textbox_scroll_x(self, *args) -> None:
         self.textbox._x_scrollbar.set(*args)
         self.ruler.redraw()
+
+    def _on_shift_home(self, event=None) -> str | None:
+        """
+        SHIFT+HOME: mover o cursor para a coluna 1, linha 1 e mostrar o início do programa na tela.
+        """
+        try:
+            # Posiciona o cursor no início absoluto
+            self.textbox.mark_set(tk.INSERT, "1.0")
+            # Garante que o topo fique visível (lista a partir do início)
+            try:
+                # Preferir API direta do CTkTextbox, se disponível
+                self.textbox.see("1.0")
+            except Exception:
+                # Fallback para o widget interno do tkinter.Text
+                self.textbox._textbox.see("1.0")
+            # Atualiza status/régua/linhas
+            self._update_status_bar()
+            self.textbox.focus_set()
+            return "break"  # impede o comportamento padrão do Tk
+        except Exception:
+            # Em caso de qualquer falha, não bloqueia o comportamento padrão
+            return None
+
+    def _on_ctrl_b(self, event=None) -> str:
+        """
+        CONTROL+B: move o cursor para o início da palavra anterior.
+        """
+        self.textbox.mark_set(tk.INSERT, self.textbox.index("insert -1c wordstart"))
+        self.textbox.see(tk.INSERT)
+        self._update_status_bar()
+        return "break"
+
+    def _on_ctrl_f(self, event=None) -> str:
+        """
+        CONTROL+F: move o cursor para o fim da palavra seguinte.
+        """
+        self.textbox.mark_set(tk.INSERT, self.textbox.index("insert +1c wordend"))
+        self.textbox.see(tk.INSERT)
+        self._update_status_bar()
+        return "break"
+
+    def _on_ctrl_e(self, event=None) -> str:
+        """
+        CONTROL+E: apaga da posição do cursor até o final da linha.
+        """
+        self.textbox.delete(tk.INSERT, "insert lineend")
+        self._update_status_bar()
+        return "break"
+
+    def _on_ctrl_h(self, event=None) -> str:
+        """
+        CONTROL+H: volta o cursor apagando como se fosse backspace.
+        """
+        try:
+            # Se houver seleção, apaga a seleção
+            if self.textbox.tag_ranges(tk.SEL):
+                self.textbox.delete(tk.SEL_FIRST, tk.SEL_LAST)
+            else:
+                # Caso contrário, apaga o caractere anterior
+                # "insert -1c" refere-se ao caractere imediatamente antes do cursor
+                if self.textbox.index(tk.INSERT) != "1.0":
+                    self.textbox.delete("insert -1c", tk.INSERT)
+            
+            self.textbox.see(tk.INSERT)
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
+
+    def _on_ctrl_i(self, event=None) -> str:
+        """
+        CONTROL+I: move o cursor para a próxima tabulação (8 colunas).
+        Apenas move o cursor, não insere caractere.
+        """
+        try:
+            # Obtém a linha e coluna atual
+            line, col = map(int, self.textbox.index(tk.INSERT).split('.'))
+            
+            # Calcula a próxima tabulação (múltiplos de 8)
+            # No Tkinter a coluna 0 é a primeira. 
+            # Tabulações MSX padrão: 0, 8, 16, 24, 32, 40, 48, 56, 64, 72...
+            next_col = ((col // 8) + 1) * 8
+            
+            # Define a nova posição
+            new_index = f"{line}.{next_col}"
+            
+            # Move o cursor
+            self.textbox.mark_set(tk.INSERT, new_index)
+            self.textbox.see(tk.INSERT)
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
+
+    def _on_ctrl_j(self, event=None) -> str:
+        """
+        CONTROL+J: move o cursor para a próxima linha.
+        """
+        try:
+            # Move o cursor para a linha de baixo, mantendo a coluna se possível
+            # "+1line" é o modificador do Tkinter para ir para a próxima linha
+            new_index = self.textbox.index("insert +1line")
+            self.textbox.mark_set(tk.INSERT, new_index)
+            self.textbox.see(tk.INSERT)
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
+
+    def _on_ctrl_k(self, event=None) -> str:
+        """
+        CONTROL+K: move o cursor para o topo da tela visível (primeira linha visível),
+        mantendo a coluna atual.
+        """
+        try:
+            # Obtém a linha visível no topo (@0,0 retorna o índice no canto superior esquerdo)
+            top_index = self.textbox._textbox.index("@0,0")
+            top_line = int(top_index.split('.')[0])
+            
+            # Obtém a coluna atual do cursor
+            _, current_col = map(int, self.textbox.index(tk.INSERT).split('.'))
+            
+            # Define a nova posição: mesma coluna, mas na linha do topo
+            new_index = f"{top_line}.{current_col}"
+            
+            # Move o cursor
+            self.textbox.mark_set(tk.INSERT, new_index)
+            # Não chamamos see() aqui porque queremos "manter o display do texto"
+            # como solicitado ("mantendo a posicao e o display do texto")
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
+
+    def _on_ctrl_m(self, event=None) -> str:
+        """
+        CONTROL+M: funciona igual ao ENTER.
+        """
+        try:
+            # Insere uma nova linha na posição do cursor
+            self.textbox.insert(tk.INSERT, "\n")
+            self.textbox.see(tk.INSERT)
+            
+            # Simula o evento de soltar a tecla Return para acionar o beautify se necessário
+            # Criamos um evento fake para o _on_key_beautify
+            class FakeEvent:
+                def __init__(self):
+                    self.keysym = "Return"
+            
+            self._on_key_beautify(FakeEvent())
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
+
+    def _on_ctrl_n(self, event=None) -> str:
+        """
+        CONTROL+N: move o cursor para o final da linha.
+        """
+        try:
+            # "insert lineend" move o cursor para o final da linha atual no Tkinter
+            new_index = self.textbox.index("insert lineend")
+            self.textbox.mark_set(tk.INSERT, new_index)
+            self.textbox.see(tk.INSERT)
+            self._update_status_bar()
+        except Exception:
+            pass
+        return "break"
 
     def _update_status_bar(self, event=None) -> None:
         cursor_pos = self.textbox.index(tk.INSERT)
@@ -876,8 +1114,51 @@ class MSXBasicEditor(ctk.CTk):
         viewer = MSXViewer(self)
         viewer.focus()
 
-    def _open_chm_viewer(self) -> None:
-        CHMViewer(self)
+    def _open_help_viewer(self) -> None:
+        viewer = HelpViewer(self)
+        viewer.focus()
+
+
+    def _show_msx1_palette(self, highlight_index: int | None = None) -> None:
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Cores MSX1 (0-15)")
+        dialog.geometry("420x520")
+        dialog.grab_set()
+
+        header = ctk.CTkFrame(dialog)
+        header.pack(fill="x", padx=10, pady=(10, 0))
+        ctk.CTkLabel(header, text="#", width=30, anchor="w").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header, text="Nome", width=180, anchor="w").grid(row=0, column=1, sticky="w")
+        ctk.CTkLabel(header, text="Hex", width=90, anchor="w").grid(row=0, column=2, sticky="w")
+        ctk.CTkLabel(header, text="Amostra", width=90, anchor="w").grid(row=0, column=3, sticky="w")
+
+        list_frame = ctk.CTkScrollableFrame(dialog)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        row_idx_to_widget = {}
+        for r, (idx, name, hex_color) in enumerate(MSX1_PALETTE):
+            row = ctk.CTkFrame(list_frame)
+            row.grid(row=r, column=0, sticky="ew", pady=2)
+            row.grid_columnconfigure(3, weight=1)
+
+            ctk.CTkLabel(row, text=str(idx), width=30, anchor="w").grid(row=0, column=0, sticky="w", padx=(2, 6))
+            ctk.CTkLabel(row, text=name, width=180, anchor="w").grid(row=0, column=1, sticky="w")
+            ctk.CTkLabel(row, text=hex_color.upper(), width=90, anchor="w").grid(row=0, column=2, sticky="w", padx=(10, 10))
+
+            # Amostra visual (quadrado)
+            swatch = tk.Canvas(row, width=48, height=20, highlightthickness=1, highlightbackground="#444444")
+            swatch.grid(row=0, column=3, sticky="w")
+            swatch.create_rectangle(2, 2, 46, 18, fill=hex_color, outline="black")
+
+            row_idx_to_widget[idx] = row
+
+        # Se solicitado, destacar uma cor específica
+        if highlight_index is not None and highlight_index in row_idx_to_widget:
+            target = row_idx_to_widget[highlight_index]
+            try:
+                target.configure(fg_color=("#2B2B2B", "#D9D9D9"))
+            except Exception:
+                pass
 
     def _load_settings(self) -> None:
         if not self.db:

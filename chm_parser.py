@@ -37,31 +37,51 @@ class CHMParser:
             return []
         
         items = []
-        for li in ul.find_all('li', recursive=False):
-            obj = li.find('object', type="text/sitemap")
-            if obj:
-                name = ""
-                local = ""
-                for param in obj.find_all('param'):
-                    p_name = param.get('name', '').lower()
-                    if p_name == 'name':
-                        name = param.get('value', '')
-                    elif p_name == 'local':
-                        local = param.get('value', '')
+        if not ul:
+            return items
+
+        # Find all LI and UL elements that are direct children (conceptually)
+        # Note: Beautiful Soup find_all(recursive=False) might miss elements if the HTML is messy
+        # Many CHM files have flat-ish structures where UL follows LI
+        
+        current_li = None
+        for child in ul.find_all(['li', 'ul'], recursive=False):
+            if child.name == 'li':
+                obj = child.find('object', type="text/sitemap")
+                if obj:
+                    name = ""
+                    local = ""
+                    for param in obj.find_all('param'):
+                        p_name = param.get('name', '').lower()
+                        if p_name == 'name':
+                            name = param.get('value', '')
+                        elif p_name == 'local':
+                            local = param.get('value', '')
+                    
+                    # If name is empty, try 'Keyword' as fallback (common in HHK)
+                    if not name:
+                        for param in obj.find_all('param'):
+                            if param.get('name', '').lower() == 'keyword':
+                                name = param.get('value', '')
+
+                    item = {
+                        'name': name,
+                        'local': str(self.temp_dir / local.replace('\\', '/')) if local else "",
+                        'children': []
+                    }
+                    items.append(item)
+                    current_li = item
                 
-                # Check for nested UL
-                sub_items = []
-                next_ul = li.find_next_sibling('ul')
-                # In some CHM structures, UL is inside LI, in others it's after LI
-                if not next_ul:
-                    next_ul = li.find('ul')
-                
-                item = {
-                    'name': name,
-                    'local': str(self.temp_dir / local) if local else "",
-                    'children': self._parse_ul(next_ul)
-                }
-                items.append(item)
+                # Check if there's a nested UL inside this LI
+                nested_ul = child.find('ul')
+                if nested_ul and current_li:
+                    current_li['children'] = self._parse_ul(nested_ul)
+
+            elif child.name == 'ul':
+                # This UL follows a LI (common in some CHM generators)
+                if current_li:
+                    current_li['children'] = self._parse_ul(child)
+        
         return items
 
     def cleanup(self):

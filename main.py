@@ -14,7 +14,12 @@ from alphabet_viewer import AlphabetViewerFrame
 from layout_viewer import LayoutViewerFrame
 from screen_viewer import ScreenViewerFrame
 from shape_viewer import ShapeViewerFrame
-from chm_viewer import CHMViewer
+
+try:
+    from help_viewer import HelpViewer
+    HELP_VIEWER_AVAILABLE = True
+except ImportError:
+    HELP_VIEWER_AVAILABLE = False
 
 
 APP_TITLE = "MSX-Write"
@@ -196,11 +201,10 @@ class MSXViewer(ctk.CTkToplevel):
         editor_button = ctk.CTkButton(header, text="Editor BASIC", command=self._open_basic_editor)
         editor_button.grid(row=0, column=5, padx=(0, 10), pady=10)
 
-        chm_button = ctk.CTkButton(header, text="Manuais CHM", command=self._open_chm_viewer)
-        chm_button.grid(row=0, column=6, padx=(0, 10), pady=10)
+        help_button = ctk.CTkButton(header, text="Ajuda MSX", command=self._open_help_viewer)
+        help_button.grid(row=0, column=6, padx=(0, 10), pady=10)
 
-    def _open_chm_viewer(self) -> None:
-        CHMViewer(self)
+
 
     def _choose_directory(self) -> None:
         path = filedialog.askdirectory(initialdir=self.base_dir, title="Selecione o diretorio")
@@ -582,6 +586,10 @@ class MSXViewer(ctk.CTkToplevel):
 
     def _open_basic_editor(self) -> None:
         self.focus()
+
+    def _open_help_viewer(self) -> None:
+        viewer = HelpViewer(self)
+        viewer.focus()
 
 
 def main() -> None:
